@@ -1,0 +1,301 @@
+---
+title: "Coronary heart disease (CHD)"
+author: "Srisai Sivakumar"
+date: "Friday, August 07, 2015"
+output: html_document
+---
+
+# Prediction of Coronary Heart Disease by learning from retrospective study
+
+## By: Srisai Sivakumar, aka, the data science dude.
+
+
+### Introduction
+
+Coronary heart disease (CHD) is the term that describes what happens when your heart's blood supply is blocked or interrupted by a build-up of fatty substances in the coronary arteries.
+
+[NHS](http://www.nhs.uk/conditions/Coronary-heart-disease/Pages/Introduction.aspx) states that Coronary heart disease can't be cured but treatment can help manage the symptoms and reduce the chances of problems such as heart attacks. Treatment can include lifestyle changes, such as regular exercise and stopping smoking, as well as medication and surgery.
+
+
+Given that there is not cure for CHD, prevention presents the best way to combat CHD. The potential factors influencing prevention are a mix including (but not exclusive to) biological, hereditary factors, lifestyle choices. 
+
+We make use of a data containing some such factors of a particular sample of population and try to examine of the data can be generalized to a larger population. The goal of this study is to make use to available data on CHD and determine which of the factors are siginiicant contributors to CHD.
+
+### The data
+
+The data set describes a retrospective sample of males in a high-risk heart-disease region of the Western Cape in South Africa. A total of 462
+samples are included in this data set. 
+
+Each high-risk patient has been monitored and the following patient attributes were obtained: 
+
+- Systolic Blood Pressure (sbp): [The blood pressure when the heart is contracting. It is specifically the maximum arterial pressure during contraction of the left ventricle of the heart. The time at which ventricular contraction occurs is called systole](http://www.medicinenet.com/script/main/art.asp?articlekey=16163). In a blood pressure reading, the systolic pressure is typically the first number recorded. For example, with a blood pressure of 120/80 ("120 over 80"), the systolic pressure is 120. By "120" is meant 120 mm Hg (millimeters of mercury). 
+
+- Cumulative Tobacco (tobacco) usage (kg)
+
+- Low Density Lipoprotein Cholesterol (ldl): often referred to as the 'bad' cholestrol.
+
+- Adiposity: Body adiposity index determines body fat percentage. It is a measure of the percentage of total body mass that is composed of fat (as opposed to fat-free mass which includes everything else other than fat that makes up the body). Its calculated as (HC / (HM)^1.5) - 18, where HC =  Hip Circumference in Centimetres and HM = Height in meters. More details can be found [here](http://www.shapesense.com/fitness-exercise/calculators/body-adiposity-index-calculator.aspx)
+
+- Family history of heart disease (famhist): History of CHD within subject's family
+
+- Type-A behavior (typea): Type A personality theory describes personality type that could raise one's chances of developing coronary heart disease. [Wikipedia](https://en.wikipedia.org/wiki/Type_A_and_Type_B_personality_theory) describes "Type A" individuals as ambitious, rigidly organized, highly status-conscious, sensitive, impatient, take on more than they can handle, want other people to get to the point, anxious, proactive, and concerned with time management. People with Type A personalities are often high-achieving "workaholics" who multi-task, push themselves with deadlines, and hate both delays and ambivalence. Wiki also claims that "It is (therefore) understood that Type A personalities are suited to smoking as a mechanism for relieving stress", but as a non medical professional, I can neither vouch nor reject this claim. I remain neutral to this claim and stick to the data collected durig the study which presents a quantification of this Type A personality.
+
+- Obesity: represented by Body Mass Index (BMI)- is a value derived from the mass (weight) and height of an individual. BMI is defined as the body mass divided by the square of the body height, and is universally expressed in units of kg/m2, resulting from weight in kilograms and height in metres.
+
+- Alcohol: current alcohol consumption
+
+- Age
+
+### Exploratory Analysis
+
+```{r start,echo=FALSE,message=FALSE,warning=FALSE}
+setwd("C:/Users/S.Srisai/Documents/working_directory/R/datasets/heart_attack")
+dat = read.table("SAheart.DATA", sep = ",", header = T)
+dat = dat[,-1]
+# dimensions
+print("Dimensions of raw data are: ")
+dim(dat)
+# names
+# names(dat)
+dat$chd = as.factor(ifelse(dat$chd==1,"yes","no"))
+print("Structure of data frame:")
+str(dat)
+print("Count of chd and non-chd cases")
+table(dat$chd)
+print("Proportion of chd and non-chd cases")
+table(dat$chd)/nrow(dat)
+base.accu = round(mean(dat$chd=="no"),3)
+```
+
+The case has close to 65% of cases with no CHD and 35% with CHD. So any model we build should give prediction accuracy greater than 65%.
+
+Lets beging by looking at the pairwise relationship to begin with.
+
+```{r plots,echo=FALSE,warning=FALSE,message=FALSE}
+library(caret)
+dat1 = dat
+dat1$chd=ifelse(dat$chd=='yes',1,2)
+splom(dat1, groups=as.factor(dat1$chd), data=dat1,main='Pairwise plot')
+```
+
+While this is too crowded to infer much from, we look at the correlation plot.
+
+
+```{r corr1,echo=FALSE,message=FALSE,warning=FALSE}
+library(corrplot)
+corr <- cor(dat2)
+corrplot(corr, method=c("circle"), bg = "white", addgrid.col = "gray50", 
+         tl.cex=1, type="lower", tl.col = "black",main= "Correlation plot of the predictors and response variable")
+```
+
+
+```{r corr,echo=FALSE,message=FALSE,warning=FALSE}
+
+dat2 = dat
+dat2$chd = ifelse(dat2$chd=="yes",1,0)
+dat2$famhist = ifelse(dat2$famhist=="Present",1,0)
+descrCor <-  cor(dat2)
+
+print(paste(as.character(findCorrelation(descrCor, cutoff = .70))," of the predictors have a correlation of over 0.7"))
+
+```
+
+We clearly see strong correlation among obesity and adiposity. 
+
+Lets begin by exploring the effect of tobacco and alcohol CHD.
+
+```{r check1,echo=FALSE,warning=FALSE,message=FALSE}
+xyplot(tobacco ~ alcohol,dat, grid = TRUE, group = chd,type = c("p","r"),
+       auto.key = list(points = F, rectangles = T, space = "right"),
+       main = 'Effect on Alcohol and Tobacco on Cornary Heart Disease')
+```
+
+Quite clearly, there is a visible difference in the trends of presence and absence of CHD. Its important to understand if it is tobacco or alcohol or combined effect thats causing the clear difference in trend.
+
+Lets first look at the agewise breakdown of the presence/absence of CHD, and then look at the effect of tobacco and alcohol with an agewise breakdown.
+
+```{r check2,echo=FALSE,warning=FALSE,message=FALSE}
+print("Age wise breakdown of presence/absence CHD")
+
+table(cut(dat$age, c(0, 20,30,40,50,60,70,80,90,100)),dat$chd)
+
+print("Its important to note that there are too few observations in CHD cases for age groups 0-20 and 20-30")
+
+# Agewise breakdown of effect of tobacco and alcohol on CHD
+xyplot(tobacco ~ alcohol|cut(dat$age, c(0, 20,30,40,50,60,70)),
+       dat, grid = TRUE, group = chd,type = c("p","r"),
+       auto.key = list(points = F, rectangles = T, space = "right"),
+       main='Effect on Alcohol, Tobacco & Age on Cornary Heart Disease')
+```
+
+
+In the age groups of [0-20] and [20-30], we observe, understandibly, low number of CHD cases. Hence the red lines of these 2 sets cannot be taken seriously. Conclusively, its difficult to observe any visible trend with the effect of alcohol. 
+
+
+Lets look at the individual plots for alcohol and tobacco individually against age.
+
+```{r check3,echo=FALSE,warning=FALSE,message=FALSE}
+
+xyplot(tobacco ~ age|chd, dat, grid = TRUE, type = c("p"),
+        group = cut(dat$age, c(0, 20,30,40,50,60,70)),
+        main='Impact of Tobacco and Age on Cornary Heart Disease')
+
+xyplot(alcohol ~ age|chd, dat, grid = TRUE, type = c("p"),
+        group = cut(dat$age, c(0, 20,30,40,50,60,70)),
+        main='Impact of Alcohol and Age on Cornary Heart Disease')
+
+```
+
+This makes it very clear that tobacco has a definitive effect on CHD, while alcohol doesnt seem to have much effect on CHD.
+
+Lets look at other factors like family history.
+
+```{r check4,message=FALSE,warning=FALSE,echo=FALSE}
+xyplot(tobacco ~ age|famhist, dat, grid=T, group = chd,type = c("p","r"),
+       auto.key = list(points = F, rectangles = T, space = "right"),
+       main = 'Influence of Family History with CHD and Tobacco 
+       usage on CHD')
+```
+
+This very clearly says that family history has an effect. Instrestingly the absence of CHD in family gives increased chances of CHD! This is a highly counter intuitive observation. Lets examine the family history data first before looking for confounding variable(s) that could be causing this effect. But at all times, its important to remember that this data is retrospective!
+
+```{r famhist,echo=FALSE,warning=FALSE,message=FALSE}
+
+with(dat,table(famhist,chd))
+
+round(with(dat,table(famhist,chd))/nrow(dat),2)
+
+bwplot(tobacco~famhist|chd,data=dat,
+       ylab="Tobacco usage", xlab="Familiy History of CHD", 
+       main="Distribution of tobacco usage with family history of CHD and
+       presence of CHD")
+
+```
+
+The table shows that there are more proportion of CHD cases with family history than those without. The plot also shows that that the CHD cases have high tobacco consumption irrespective of family history. This asserts the belief that a individual consumes tobacco as much tobacco as he/she does, irrespective of the prevalence of CHD in their family. And we have already seen that tobacco has influence on prevalence of CHD among individuals.
+
+So it was the tobacco consumption pattern among the individuals that was indirectly causing the CHD chances of individuals without family history of CHD to be higher. 
+
+### Modelling
+
+We split the data into training and test sets with a 70/30 split. 
+
+```{r models,echo=FALSE,warning=FALSE,message=FALSE}
+set.seed(1)
+inTraining <- createDataPartition(dat$chd, p = .7, list = FALSE)
+train <- dat[ inTraining,]
+test  <- dat[-inTraining,]
+print("dimensions of of training data:")
+dim(train)
+print("dimensions of of test data:")
+dim(test)
+```
+
+#### CART
+
+We being with a CART model, to make use of its interpretability. If the accuracy it provides seem inadequate, we could explore other models. We use no specific tuning parameters to develop the model. 
+
+```{r cart,echo=FALSE,message=FALSE,warning=FALSE}
+tree = train(x = train[,-10],y=train[,10],method='rpart')
+tree.pred=predict(tree,test[,-10])
+print("Confusion Matrix")
+confusionMatrix(test$chd,tree.pred)
+#confusionMatrix(test$chd,tree.pred)$table
+tree.accu = round(confusionMatrix(test$chd,tree.pred)$overall[[1]],3)
+
+print(paste("The CART model gives an accuracy of:",as.character(tree.accu)))
+
+print("Tree visualization")
+
+library(rpart)
+
+rtree = rpart(chd~.,data=train, cp = 0.04017857)
+library(rpart.plot)
+prp(rtree)
+```
+
+The increase in accuracy is pretty modest. So we would have to explore other models to improve the predictive accuracy.
+
+But it would be interesting to briefly explore the decision tree of the CART model. The model predicts age, tobacco and famhist as the  predictors of CHD. Whats intriuging is the fact that the decision tree is predicting a yes for CHD when there is no family history of CHD. As counter-intuitive as it is, we have seen this in the exploratory graphs. So we dont investigate this any further.
+
+#### Logistic Regression
+
+We move on to Logistic Regression. We are trying to seek improvement in predictive accuracy at the cost of interpretability. Clearly the tree provides a better way to communicate the decision making process to a HCP, than the set of regression coefficients given by Logistic Regression.
+
+```{r logR,echo=FALSE,warning=FALSE,message=FALSE}
+print("Logistic Regression Model")
+logR = train(x = train[,-10],y=train[,10],method='glm')
+summary(logR)
+logR.pred = predict(logR,test[,-10])
+print("Confusion Matrix")
+confusionMatrix(test$chd,logR.pred)
+#confusionMatrix(test$chd,logR.pred)$table
+logR.accu = round(confusionMatrix(test$chd,logR.pred)$overall[[1]],3)
+print(paste("The Logistic Regression model gives an accuracy of:",as.character(logR.accu)))
+```
+
+From the summary of the logistic regression mode, we can observe that Systolic Blood Pressure (sbp), Alcohol and Adiposity are not significant predictors.
+
+We can readily explain the in-significance of adiposity to the model. Its because of its correlation with obesity.
+
+We have also seen that alcohol doesnt seem to be a significant predictor of CHD from our exploratory analysis.
+
+The insignificance of Systolic Blood Pressure (sbp) to the model needs more thought. It could be that sbp is correlated "reasonably" (~0.36) with both adiposity and age. Or it could be that it is geneuinely not significant to the prediction of chd.
+
+
+#### Boosting
+
+Lets look at boosting models. 
+
+```{r gbm,echo=FALSE,message=FALSE,warning=FALSE}
+print("Boosting Model")
+gbm = train(x = train[,-10],y=train[,10],method='gbm',verbose=FALSE)
+gbm
+gbm.pred=predict(gbm,test[,-10])
+print("Confusion Matrix")
+confusionMatrix(test$chd,gbm.pred)
+#confusionMatrix(test$chd,gbm.pred)$table
+gbm.accu = round(confusionMatrix(test$chd,gbm.pred)$overall[[1]],3)
+print(paste("The boosting model gives an accuracy of:",as.character(gbm.accu)))
+
+```
+
+This gives improvement over the logistic regression model. Lets look at the importance of each predictor on the response variable.
+
+```{r gbmimp,echo=FALSE,message=FALSE,warning=FALSE}
+
+gbmImp <- varImp(gbm, scale = FALSE)
+gbmImp
+plot(gbmImp,main="Relative Variable Importance on CHD")
+
+```
+
+### Results
+
+```{r res,echo=FALSE,message=FALSE,warning=FALSE}
+
+result = data.frame(model = c("Baseline","CART","Logit","Boosting"),
+                    accu = c(base.accu,tree.accu,logR.accu,gbm.accu))
+result$accPC = round(result$accu/result$accu[1] - 1,2)
+
+barchart(accu~ model, data = result, group = model, xlab = "Models",
+         ylab = "Accuracy",main="Model Accuracies")
+
+```
+
+The best model, the boosting model, gives close to 72% accuracy. This is a 10% improvement in the prediction accuracy when cumpared with that of the baseline. Logistic Regression provides just over 70% accuracy. The CART and naive baseline model have accuracies of around 65%.
+
+Preliminary exploratory analysis revealed that alcohol is not a significant predictor for CHD. This was later ascertained by CART, Logistic Regression and Boosting models. So it may be deduced that alcohol doesnot influence the occurrence of CHD.
+
+All the 3 models developed place age and tobacco as the most important predictors. 
+
+Family history of CHD shows significance in prediction of CHD. Its interesting to note that individuals with no family history of CHD seem to display higher chances of CHD. This trend was observed probably due to counfounding.
+
+While CART and Logistic Regression models deemed Systolic Blood Pressure (sbp) an insignificant predictor, Boosting partially reverses the trend by  deeming it to be a significant predictor, at the expense of obesity and adiposity.
+
+### Conclusion
+
+
+The study investigates the application of various data mining algorithms to predict the heart attacks and to compare the best method of prediction. The results do not presents a dramatic difference in the prediction when using different classification algorithms like CART, Logistic Regression and Boosting. SUch a study can serve as an important tool to aid Doctors/Physicians to predict risky cases and advise accordingly, given that there is no cure for CHD. 
+
+The model would probably be able to answer more complex queries in the prediction of CHD with the availability of more data from diverse population, including women, and individuals from various demographics and geographies. The predictive accuracy provided by CART, Logistic Regression and Boosting algorithms suggests that medical, biological, hereditary and life style choice factors are indeed reliable indicators to predict the presence of heart diseases.
